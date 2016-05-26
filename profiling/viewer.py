@@ -27,6 +27,21 @@ from collections import deque
 import urwid
 from urwid import connect_signal as on
 
+import prompt_toolkit
+from prompt_toolkit.application import Application
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.enums import DEFAULT_BUFFER
+from prompt_toolkit.document import Document
+from prompt_toolkit.interface import CommandLineInterface
+from prompt_toolkit.key_binding.manager import KeyBindingManager
+from prompt_toolkit.keys import Keys
+from prompt_toolkit.layout.containers import VSplit, HSplit, Window
+from prompt_toolkit.layout.controls import BufferControl, FillControl, TokenListControl
+from prompt_toolkit.layout.dimension import LayoutDimension as D
+from prompt_toolkit.shortcuts import create_eventloop
+from prompt_toolkit.token import Token
+
+
 from . import sortkeys
 from .stats import FlatFrozenStatistics
 
@@ -37,6 +52,126 @@ __all__ = ['StatisticsTable', 'StatisticsViewer', 'fmt',
 
 NESTED = 0
 FLAT = 1
+
+
+
+
+layout = VSplit([
+    # One window that holds the BufferControl with the default buffer on the
+    # left.
+    Window(content=BufferControl(buffer_name=DEFAULT_BUFFER)),
+
+    # A vertical line in the middle. We explicitely specify the width, to make
+    # sure that the layout engine will not try to divide the whole width by
+    # three for all these windows. The `FillControl` will simply fill the whole
+    # window by repeating this character.
+    Window(width=D.exact(1),
+           content=FillControl('|', token=Token.Line)),
+
+    # Display the Result buffer on the right.
+    Window(content=BufferControl(buffer_name='RESULT')),
+])
+
+# As a demonstration. Let's add a title bar to the top, displaying "Hello world".
+
+# somewhere, because usually the default key bindings include searching. (Press
+# Ctrl-R.) It would be really annoying if the search key bindings are handled,
+# but the user doesn't see any feedback. We will add the search toolbar to the
+# bottom by using an HSplit.
+
+def get_titlebar_tokens(cli):
+    return [
+        (Token.Title, ' Hello world '),
+        (Token.Title, ' (Press [Ctrl-Q] to quit.)'),
+    ]
+
+
+layout = HSplit([
+    # The titlebar.
+    Window(height=D.exact(1),
+           content=TokenListControl(get_titlebar_tokens, align_center=True)),
+
+    # Horizontal separator.
+    Window(height=D.exact(1),
+           content=FillControl('-', token=Token.Line)),
+
+    # The 'body', like defined above.
+    layout,
+])
+
+
+# 2. Adding key bindings
+#   --------------------
+
+# As a demonstration, we will add just a ControlQ key binding to exit the
+# application.  Key bindings are registered in a
+# `prompt_toolkit.key_bindings.registry.Registry` instance. However instead of
+# starting with an empty `Registry` instance, usually you'd use a
+# `KeyBindingmanager`, because it prefills the registry with all of the key
+# bindings that are required for basic text editing.
+
+manager = KeyBindingManager()  # Start with the `KeyBindingManager`.
+
+# Now add the Ctrl-Q binding. We have to pass `eager=True` here. The reason is
+# that there is another key *sequence* that starts with Ctrl-Q as well. Yes, a
+# key binding is linked to a sequence of keys, not necessarily one key. So,
+# what happens if there is a key binding for the letter 'a' and a key binding
+# for 'ab'. When 'a' has been pressed, nothing will happen yet. Because the
+# next key could be a 'b', but it could as well be anything else. If it's a 'c'
+# for instance, we'll handle the key binding for 'a' and then look for a key
+# binding for 'c'. So, when there's a common prefix in a key binding sequence,
+# prompt-toolkit will wait calling a handler, until we have enough information.
+
+# Now, There is an Emacs key binding for the [Ctrl-Q Any] sequence by default.
+# Pressing Ctrl-Q followed by any other key will do a quoted insert. So to be
+# sure that we won't wait for that key binding to match, but instead execute
+# Ctrl-Q immediately, we can pass eager=True. (Don't make a habbit of adding
+# `eager=True` to all key bindings, but do it when it conflicts with another
+# existing key binding, and you definitely want to override that behaviour.
+
+@manager.registry.add_binding(Keys.ControlC, eager=True)
+@manager.registry.add_binding(Keys.ControlQ, eager=True)
+def _(event):
+    """
+    Pressing Ctrl-Q or Ctrl-C will exit the user interface.
+
+    Setting a return value means: quit the event loop that drives the user
+    interface and return this value from the `CommandLineInterface.run()` call.
+
+    Note that Ctrl-Q does not work on all terminals. Sometimes it requires
+    executing `stty -ixon`.
+    """
+    event.cli.set_return_value(None)
+
+# 3. Create the buffers
+#    ------------------
+
+# Buffers are the objects that keep track of the user input. In our example, we
+# have two buffer instances, both are multiline.
+
+buffers={
+    DEFAULT_BUFFER: Buffer(is_multiline=True),
+    'RESULT': Buffer(is_multiline=True),
+}
+
+
+# Now we add an event handler that captures change events to the buffer on the
+# left. If the text changes over there, we'll update the buffer on the right.
+
+def default_buffer_changed(cli):
+    """
+    When the buffer on the left (DEFAULT_BUFFER) changes, update the buffer on
+    the right. We just reverse the text.
+    """
+    buffers['RESULT'].text = buffers[DEFAULT_BUFFER].text[::-1]
+
+
+buffers[DEFAULT_BUFFER].on_text_changed += default_buffer_changed
+
+
+
+
+
 
 
 def get_func(f):
@@ -784,28 +919,43 @@ class StatisticsViewer(object):
 
     def unhandled_input(self, key):
         if key in ('q', 'Q'):
-            raise urwid.ExitMainLoop()
+            raise self.eventloop.close()
 
     def __init__(self):
-        self.table = StatisticsTable(self)
-        self.widget = urwid.Padding(self.table, right=1)
+        self.widget = Application(
+            layout=layout,
+            buffers=buffers,
+            key_bindings_registry=manager.registry,
+
+            # Let's add mouse support!
+            mouse_support=True,
+
+            # Using an alternate screen buffer means as much as: "run full screen".
+            # It switches the terminal to an alternate screen.
+            use_alternate_screen=False)
+
+        self.eventloop = eventloop = create_eventloop()
 
     def loop(self, *args, **kwargs):
         kwargs.setdefault('unhandled_input', self.unhandled_input)
-        loop = urwid.MainLoop(self.widget, self.palette, *args, **kwargs)
-        return loop
+        cli = CommandLineInterface(application=self.widget, eventloop=self.eventloop)
+
+        return cli
 
     def set_profiler_class(self, profiler_class):
-        table_class = profiler_class.table_class
-        # NOTE: Don't use isinstance() at the below line.
-        if type(self.table) is table_class:
-            return
-        self.table = table_class(self)
-        self.widget.original_widget = self.table
+        pass
+        # table_class = profiler_class.table_class
+        # # NOTE: Don't use isinstance() at the below line.
+        # if type(self.table) is table_class:
+        #     return
+        # self.table = table_class(self)
+        # self.widget.original_widget = self.table
 
     def set_result(self, stats, cpu_time=0.0, wall_time=0.0,
                    title=None, at=None):
         self._final_result = (stats, cpu_time, wall_time, title, at)
+        if stats.name:
+            buffers[DEFAULT_BUFFER].set_document(Document(stats.name))
         if not self.paused:
             self.update_result()
 
@@ -820,15 +970,15 @@ class StatisticsViewer(object):
             self.table.update_frame()
             return
         stats, cpu_time, wall_time, title, at = result
-        self.table.set_result(stats, cpu_time, wall_time, title, at)
+        # self.table.set_result(stats, cpu_time, wall_time, title, at)
 
     def activate(self):
         self.active = True
-        self.table.update_frame()
+        # self.table.update_frame()
 
     def inactivate(self):
         self.active = False
-        self.table.update_frame()
+        # self.table.update_frame()
 
     def pause(self):
         self.paused = True
@@ -836,7 +986,7 @@ class StatisticsViewer(object):
             self._paused_result = self._final_result
         except AttributeError:
             pass
-        self.table.update_frame()
+        # self.table.update_frame()
 
     def resume(self):
         self.paused = False

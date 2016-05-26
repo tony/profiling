@@ -9,7 +9,7 @@
 """
 from __future__ import absolute_import
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from errno import ECONNREFUSED, EINPROGRESS, ENOENT
 import socket
 
@@ -71,7 +71,7 @@ class ProfilingClient(object):
         self.protocol(method, msg, self)
 
     def erred(self, errno):
-        self.event_loop.remove_watch_file(self.sock.fileno())
+        self.event_loop.eventloop.remove_reader(self.sock.fileno())
         self.viewer.inactivate()
 
 
@@ -102,7 +102,7 @@ class FailoverProfilingClient(ProfilingClient):
                 return
             else:
                 raise ValueError('Unexpected socket errno: %d' % errno)
-        self.event_loop.watch_file(self.sock.fileno(), self.handle)
+        self.event_loop.eventloop.add_reader(self.sock.fileno(), self.handle)
 
     def disconnect(self, errno):
         self.sock.close()
@@ -113,7 +113,7 @@ class FailoverProfilingClient(ProfilingClient):
     def create_connection(self, delay=0):
         self.sock = socket.socket(self.family)
         self.sock.setblocking(0)
-        self.event_loop.alarm(delay, self.connect)
+        self.event_loop.eventloop.call_from_executor(self.connect, (datetime.now() + timedelta(0, delay)))
 
     def start(self):
         self.create_connection()

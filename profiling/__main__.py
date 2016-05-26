@@ -717,7 +717,7 @@ def view(src, mono):
         viewer.activate()
     elif src_type in ('tcp', 'sock'):
         family = {'tcp': socket.AF_INET, 'sock': socket.AF_UNIX}[src_type]
-        client = FailoverProfilingClient(viewer, loop.event_loop,
+        client = FailoverProfilingClient(viewer, loop,
                                          src_name, family, title=title)
         client.start()
     try:
