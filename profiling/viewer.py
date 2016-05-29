@@ -572,28 +572,28 @@ class StatContainer(object):
 
     def create_window(self):
         name_panels = []
-        fileno_panels = []
-        lineno_panels = []
+        filelineno_panels = []
         module_panels = []
         for _stats in self.stats:
             name = _stats[1][0]
-            filename = _stats[1][1]
-            lineno = six.text_type(_stats[1][2])
-            module = _stats[1][3]
-            if name is not None and 'run' in name or name is None:
+            try:
+                filename = _stats[1][1][-25:]
+                lineno = six.text_type(_stats[1][2])
+                module = _stats[1][3]
+            except TypeError:
+                continue
+            if name is not None and 'run' in name or name is None or module is None:
                 continue
             else:
                 assert name != 'run'
                 stat_line = ' | '.join(six.text_type(s) for s in _stats[1]) + '\n'
                 name_panels.append((Token.Title, name + '\n'))
-                fileno_panels.append((Token.Title, filename + '\n'))
-                lineno_panels.append((Token.Title, ':%s\n' % lineno))
+                filelineno_panels.append((Token.Title, '%s:%s\n' % (filename, lineno)))
                 module_panels.append((Token.Title, module + '\n'))
         return HSplit([
             VSplit([
                 Window(content=TokenListControl(lambda x: name_panels)),
-                Window(content=TokenListControl(lambda x: fileno_panels)),
-                Window(content=TokenListControl(lambda x: lineno_panels)),
+                Window(content=TokenListControl(lambda x: filelineno_panels)),
                 Window(content=TokenListControl(lambda x: module_panels)),
             ])
             # stats.module or stats.filename, stats.lineno
