@@ -588,7 +588,7 @@ class StatContainer(object):
             else:
                 assert name != 'run'
                 stat_line = ' | '.join(six.text_type(s) for s in _stats[1]) + '\n'
-                name_panels.append((Token.Title, name + '\n'))
+                name_panels.append((Token.Name.Entity, name + '\n'))
                 filelineno_panels.append((Token.Title, '%s:%s\n' % (filename, lineno)))
                 module_panels.append((Token.Title, module + '\n'))
         return HSplit([
@@ -682,7 +682,7 @@ class StatisticsViewer(object):
 
             # Using an alternate screen buffer means as much as: "run full
             # screen". It switches the terminal to an alternate screen.
-            use_alternate_screen=False)
+            use_alternate_screen=True)
 
         self.eventloop = create_eventloop()
 
