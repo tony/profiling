@@ -34,7 +34,8 @@ from prompt_toolkit.enums import DEFAULT_BUFFER
 from prompt_toolkit.interface import CommandLineInterface
 from prompt_toolkit.key_binding.manager import KeyBindingManager
 from prompt_toolkit.keys import Keys
-from prompt_toolkit.layout.containers import HSplit, VSplit, Window
+from prompt_toolkit.layout import HSplit, VSplit, FloatContainer, Float
+from prompt_toolkit.layout.containers import HSplit, VSplit, Window, FloatContainer, ConditionalContainer
 from prompt_toolkit.layout.controls import (BufferControl, FillControl,
                                             TokenListControl)
 from prompt_toolkit.layout.dimension import LayoutDimension as D
@@ -112,7 +113,7 @@ class Formatter(object):
         @staticmethod
         def make_text(*args, **kwargs):
             markup = get_markup(*args, **kwargs)
-            return urwid.Text(markup, **text_kwargs)
+            return markup
         return make_text
 
     # percent
@@ -833,6 +834,28 @@ class StatisticsViewer(object):
             raise self.eventloop.close()
 
     def __init__(self):
+        self._fc = FloatContainer(
+            content=VSplit([Window(content=BufferControl(buffer_name=DEFAULT_BUFFER))]),
+            floats=[
+                Float(content=Window(
+                height=D.exact(1),
+                content=FillControl('-', token=Token.Line)))
+            ]
+        )
+
+        self.layout = HSplit([
+            # The titlebar.
+            Window(
+                height=D.exact(1),
+                content=TokenListControl(
+                    self.get_titlebar_tokens, align_center=True)
+            ),
+            Window(
+                height=D.exact(1),
+                content=FillControl('-', token=Token.Line)),
+            self._fc,
+        ])
+
         self.widget = Application(
             layout=self.layout,
             buffers=buffers,
@@ -892,14 +915,36 @@ class StatisticsViewer(object):
         # from ptpython.repl import embed
         # embed(globals(), locals(), vi_mode=False, history_filename=None)
 
+        self.update()
         self.cli.request_redraw()
+
         # self.table.set_result(stats, cpu_time, wall_time, title, at)
 
-    @property
-    def vlayout(self):
-        return VSplit([
-            Window(content=BufferControl(buffer_name=DEFAULT_BUFFER)),
-        ])
+    def update(self):
+
+        def create_layout_from_stats():
+            result = self.get_result()
+            stats, cpu_time, wall_time, title, time = result
+            if result is None:
+                return VSplit([Window(
+                height=D.exact(1),
+                content=FillControl('-', token=Token.Line))])
+            else:
+                stats, cpu_time, wall_time, title, time = result
+                return HSplit([
+                    Window(
+                        height=D.exact(1),
+                        content=TokenListControl(
+                            lambda x: [(Token.Title, six.text_type(fmt.make_stat_text(stats.children[0])))], align_center=True)
+                    ),
+                    Window(
+                        height=D.exact(1),
+                        content=TokenListControl(
+                            lambda x: [(Token.Title, six.text_type(fmt.make_stat_text(stats.children[0].children[0])))], align_center=True)
+                    )
+                ])
+        layout = create_layout_from_stats()
+        self._fc.content = layout
 
     def get_titlebar_tokens(self, cli):
         result = self.get_result()
@@ -935,26 +980,6 @@ class StatisticsViewer(object):
             (Token.Title, meta_info),
             (Token.Title, cpu_info),
         ]
-
-    @property
-    def layout(self):
-        return HSplit([
-            # The titlebar.
-            Window(
-                height=D.exact(1),
-                content=TokenListControl(
-                    self.get_titlebar_tokens, align_center=True)
-            ),
-
-            # Horizontal separator.
-            Window(
-                height=D.exact(1),
-                content=FillControl('-', token=Token.Line)),
-
-            # The 'body', like defined above.
-            self.vlayout,
-
-        ])
 
     def activate(self):
         self.active = True
