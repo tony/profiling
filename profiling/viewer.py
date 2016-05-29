@@ -566,6 +566,26 @@ class StatisticsTable(urwid.WidgetWrap):
         self._expanded_stat_hashes.discard(hash(stats))
 
 
+class StatContainer(object):
+    def __init__(self, stats):
+        self.stats = stats
+
+    def create_window(self):
+        panels = []
+        for _stats in self.stats:
+            name = _stats[1][0]
+            if name is not None and 'run' in name:
+                continue
+            else:
+                assert name != 'run'
+                stat_line = ' | '.join(six.text_type(s) for s in _stats[1]) + '\n'
+                panels.append((Token.Title, stat_line))
+        return Window(
+            content=TokenListControl(
+                lambda x: panels, align_center=True)
+
+        )
+
 class StatisticsViewer(object):
 
     weak_color = 'light green'
@@ -703,22 +723,8 @@ class StatisticsViewer(object):
                     height=D.exact(1),
                     content=FillControl('-', token=Token.Line))])
             else:
-                stats = result[0]
-                panels = []
-
-                for _stats in make_frozen_stats_tree(stats):
-                    name = _stats[1][0]
-                    if name is not None and 'run' in name:
-                        continue
-                    else:
-                        assert name != 'run'
-                        stat_line = ' | '.join(six.text_type(s) for s in _stats[1])
-                        panels.append(Window(
-                            height=D.exact(1),
-                            content=TokenListControl(
-                                lambda x: [(Token.Title, stat_line)], align_center=True)
-                        ))
-                return HSplit(panels)
+                realstats = make_frozen_stats_tree(result[0])
+                return StatContainer(realstats).create_window()
         layout = create_layout_from_stats()
         self._fc.content = layout
 
