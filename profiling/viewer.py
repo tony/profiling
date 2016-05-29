@@ -26,18 +26,17 @@ from collections import deque
 
 import six
 import urwid
+from profiling.stats import make_frozen_stats_tree
 from urwid import connect_signal as on
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.document import Document
 from prompt_toolkit.enums import DEFAULT_BUFFER
 from prompt_toolkit.interface import CommandLineInterface
 from prompt_toolkit.key_binding.manager import KeyBindingManager
 from prompt_toolkit.keys import Keys
-from prompt_toolkit.layout.containers import (ConditionalContainer,
-                                              FloatContainer, HSplit, VSplit,
-                                              Window, Float)
+from prompt_toolkit.layout.containers import (Float, FloatContainer, HSplit,
+                                              VSplit, Window)
 from prompt_toolkit.layout.controls import (BufferControl, FillControl,
                                             TokenListControl)
 from prompt_toolkit.layout.dimension import LayoutDimension as D
@@ -290,229 +289,6 @@ class Formatter(object):
 
 
 fmt = Formatter
-
-
-class StatisticsWidget(urwid.TreeWidget):
-
-    signals = ['expanded', 'collapsed']
-    icon_chars = ('+', '-', ' ')  # collapsed, expanded, leaf
-
-    def __init__(self, node):
-        super(StatisticsWidget, self).__init__(node)
-        self._w = urwid.AttrWrap(self._w, None, StatisticsViewer.focus_map)
-
-    def selectable(self):
-        return True
-
-    @property
-    def expanded(self):
-        return self._expanded
-
-    @expanded.setter
-    def expanded(self, expanded):
-        in_init = not hasattr(self, 'expanded')
-        self._expanded = expanded
-        if in_init:
-            return
-        if expanded:
-            urwid.emit_signal(self, 'expanded')
-        else:
-            urwid.emit_signal(self, 'collapsed')
-
-    def get_mark(self):
-        """Gets an expanded, collapsed, or leaf icon."""
-        if self.is_leaf:
-            char = self.icon_chars[2]
-        else:
-            char = self.icon_chars[int(self.expanded)]
-        return urwid.SelectableIcon(('mark', char), 0)
-
-    def load_inner_widget(self):
-        node = self.get_node()
-        return node.table.make_row(node)
-
-    def get_indented_widget(self):
-        icon = self.get_mark()
-        widget = self.get_inner_widget()
-        node = self.get_node()
-        widget = urwid.Columns([('fixed', 1, icon), widget], 1)
-        indent = (node.get_depth() - 1)
-        widget = urwid.Padding(widget, left=indent)
-        return widget
-
-    def update_mark(self):
-        widget = self._w.base_widget
-        try:
-            widget.widget_list[0] = self.get_mark()
-        except (TypeError, AttributeError):
-            return
-
-    def update_expanded_icon(self):
-        self.update_mark()
-
-    def expand(self):
-        self.expanded = True
-        self.update_mark()
-
-    def collapse(self):
-        self.expanded = False
-        self.update_mark()
-
-    def keypress(self, size, key):
-        command = self._command_map[key]
-        if command == urwid.ACTIVATE:
-            key = '-' if self.expanded else '+'
-        elif command == urwid.CURSOR_RIGHT:
-            key = '+'
-        elif self.expanded and command == urwid.CURSOR_LEFT:
-            key = '-'
-        return super(StatisticsWidget, self).keypress(size, key)
-
-
-class EmptyWidget(urwid.Widget):
-    """A widget which doesn't render anything."""
-
-    def __init__(self, rows=0):
-        super(EmptyWidget, self).__init__()
-        self._rows = rows
-
-    def rows(self, size, focus=False):
-        return self._rows
-
-    def render(self, size, focus=False):
-        return urwid.SolidCanvas(' ', size[0], self.rows(size, focus))
-
-
-class RootStatisticsWidget(StatisticsWidget):
-
-    def load_inner_widget(self):
-        return EmptyWidget()
-
-    def get_indented_widget(self):
-        return self.get_inner_widget()
-
-    def get_mark(self):
-        raise TypeError('Statistics widget has no mark')
-
-    def update(self):
-        pass
-
-    def unexpand(self):
-        pass
-
-
-class StatisticsNodeBase(urwid.TreeNode):
-
-    def __init__(self, stats=None, parent=None, key=None, depth=None,
-                 table=None):
-        super(StatisticsNodeBase, self).__init__(stats, parent, key, depth)
-        self.table = table
-
-    def get_focus(self):
-        widget, focus = super(StatisticsNodeBase, self).get_focus()
-        if self.table is not None:
-            self.table.walker.set_focus(self)
-        return widget, focus
-
-    def get_widget(self, reload=False):
-        if self._widget is None or reload:
-            self._widget = self.load_widget()
-            self.setup_widget(self._widget)
-        return self._widget
-
-    def load_widget(self):
-        return self._widget_class(self)
-
-    def setup_widget(self, widget):
-        if self.table is None:
-            return
-        stats = self.get_value()
-        if hash(stats) in self.table._expanded_stat_hashes:
-            widget.expand()
-
-
-class NullStatisticsWidget(StatisticsWidget):
-
-    def __init__(self, node):
-        urwid.TreeWidget.__init__(self, node)
-
-    def get_inner_widget(self):
-        widget = urwid.Text(('weak', '- Not Available -'), align='center')
-        widget = urwid.Filler(widget)
-        widget = urwid.BoxAdapter(widget, 3)
-        return widget
-
-
-class NullStatisticsNode(StatisticsNodeBase):
-
-    _widget_class = NullStatisticsWidget
-
-
-class LeafStatisticsNode(StatisticsNodeBase):
-
-    _widget_class = StatisticsWidget
-
-
-class StatisticsNode(StatisticsNodeBase, urwid.ParentNode):
-
-    def deep_usage(self):
-        stats = self.get_value()
-        table = self.get_root()
-        try:
-            return stats.deep_time / table.cpu_time
-        except AttributeError:
-            return 0.0
-
-    def load_widget(self):
-        if self.is_root():
-            widget_class = RootStatisticsWidget
-        else:
-            widget_class = StatisticsWidget
-        widget = widget_class(self)
-        widget.collapse()
-        return widget
-
-    def setup_widget(self, widget):
-        super(StatisticsNode, self).setup_widget(widget)
-        if self.get_depth() == 0:
-            # Just expand the root node.
-            widget.expand()
-            return
-        table = self.table
-        if table is None:
-            return
-        on(widget, 'expanded', table._widget_expanded, widget)
-        on(widget, 'collapsed', table._widget_collapsed, widget)
-
-    def load_child_keys(self):
-        stats = self.get_value()
-        if stats is None:
-            return ()
-        return stats.sorted(self.table.order)
-
-    def load_child_node(self, stats):
-        depth = self.get_depth() + 1
-        node_class = StatisticsNode if len(stats) else LeafStatisticsNode
-        return node_class(stats, self, stats, depth, self.table)
-
-
-class StatisticsListBox(urwid.TreeListBox):
-
-    signals = ['focus_changed']
-
-    def change_focus(self, *args, **kwargs):
-        super(StatisticsListBox, self).change_focus(*args, **kwargs)
-        focus = self.get_focus()
-        urwid.emit_signal(self, 'focus_changed', focus)
-
-
-class StatisticsWalker(urwid.TreeWalker):
-
-    signals = ['focus_changed']
-
-    def set_focus(self, focus):
-        super(StatisticsWalker, self).set_focus(focus)
-        urwid.emit_signal(self, 'focus_changed', focus)
 
 
 class StatisticsTable(urwid.WidgetWrap):
@@ -913,18 +689,9 @@ class StatisticsViewer(object):
         result = self.get_result()
         if result is None:
             return
-        stats, cpu_time, wall_time, title, at = result
-        text = six.text_type
-        buffers[DEFAULT_BUFFER].set_document(Document((' | '.join([
-            text(cpu_time), text(wall_time), title, text(at)]))))
-
-        # from ptpython.repl import embed
-        # embed(globals(), locals(), vi_mode=False, history_filename=None)
 
         self.update()
         self.cli.request_redraw()
-
-        # self.table.set_result(stats, cpu_time, wall_time, title, at)
 
     def update(self):
 
@@ -938,9 +705,7 @@ class StatisticsViewer(object):
             else:
                 stats, cpu_time, wall_time, title, time = result
                 panels = []
-                # from ptpython.repl import embed
-                # embed(globals(), locals(), vi_mode=False, history_filename=None)
-                from profiling.stats import spread_stats, make_frozen_stats_tree
+
                 for _stats in make_frozen_stats_tree(stats):
                     name, filename, lineno, module, own_hits, deep_time = _stats[1]
                     if name == 'run':
@@ -1027,3 +792,4 @@ def bind_game_keys(urwid=urwid):
     urwid.command_map['s'] = urwid.command_map['down']
     urwid.command_map['w'] = urwid.command_map['up']
     urwid.command_map['d'] = urwid.command_map['right']
+
