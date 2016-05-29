@@ -26,6 +26,7 @@ from collections import deque
 
 import six
 import urwid
+import os
 from profiling.stats import make_frozen_stats_tree
 from urwid import connect_signal as on
 
@@ -577,10 +578,10 @@ class StatContainer(object):
         for _stats in self.stats:
             name = _stats[1][0]
             try:
-                filename = _stats[1][1][-25:]
+                filename = os.path.basename(_stats[1][1])
                 lineno = six.text_type(_stats[1][2])
                 module = _stats[1][3]
-            except TypeError:
+            except (TypeError, AttributeError):
                 continue
             if name is not None and 'run' in name or name is None or module is None:
                 continue
