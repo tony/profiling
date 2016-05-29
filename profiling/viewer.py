@@ -27,6 +27,7 @@ from collections import deque
 import six
 import urwid
 from urwid import connect_signal as on
+
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.document import Document
@@ -34,8 +35,9 @@ from prompt_toolkit.enums import DEFAULT_BUFFER
 from prompt_toolkit.interface import CommandLineInterface
 from prompt_toolkit.key_binding.manager import KeyBindingManager
 from prompt_toolkit.keys import Keys
-from prompt_toolkit.layout import HSplit, VSplit, FloatContainer, Float
-from prompt_toolkit.layout.containers import HSplit, VSplit, Window, FloatContainer, ConditionalContainer
+from prompt_toolkit.layout.containers import (ConditionalContainer,
+                                              FloatContainer, HSplit, VSplit,
+                                              Window, Float)
 from prompt_toolkit.layout.controls import (BufferControl, FillControl,
                                             TokenListControl)
 from prompt_toolkit.layout.dimension import LayoutDimension as D
@@ -97,6 +99,7 @@ class Formatter(object):
     def _markup(get_string, get_attr=None):
         get_string = get_func(get_string)
         get_attr = get_func(get_attr)
+
         @staticmethod
         def markup(*args, **kwargs):
             string = get_string(*args, **kwargs)
@@ -110,6 +113,7 @@ class Formatter(object):
 
     def _make_text(get_markup, **text_kwargs):
         get_markup = get_func(get_markup)
+
         @staticmethod
         def make_text(*args, **kwargs):
             markup = get_markup(*args, **kwargs)
@@ -835,11 +839,13 @@ class StatisticsViewer(object):
 
     def __init__(self):
         self._fc = FloatContainer(
-            content=VSplit([Window(content=BufferControl(buffer_name=DEFAULT_BUFFER))]),
+            content=VSplit([
+                Window(content=BufferControl(buffer_name=DEFAULT_BUFFER))]),
             floats=[
-                Float(content=Window(
-                height=D.exact(1),
-                content=FillControl('-', token=Token.Line)))
+                Float(
+                    content=Window(
+                        height=D.exact(1),
+                        content=FillControl('-', token=Token.Line)))
             ]
         )
 
@@ -927,8 +933,8 @@ class StatisticsViewer(object):
             stats, cpu_time, wall_time, title, time = result
             if result is None:
                 return VSplit([Window(
-                height=D.exact(1),
-                content=FillControl('-', token=Token.Line))])
+                    height=D.exact(1),
+                    content=FillControl('-', token=Token.Line))])
             else:
                 stats, cpu_time, wall_time, title, time = result
                 return HSplit([
