@@ -937,18 +937,21 @@ class StatisticsViewer(object):
                     content=FillControl('-', token=Token.Line))])
             else:
                 stats, cpu_time, wall_time, title, time = result
-                return HSplit([
-                    Window(
-                        height=D.exact(1),
-                        content=TokenListControl(
-                            lambda x: [(Token.Title, six.text_type(fmt.make_stat_text(stats.children[0])))], align_center=True)
-                    ),
-                    Window(
-                        height=D.exact(1),
-                        content=TokenListControl(
-                            lambda x: [(Token.Title, six.text_type(fmt.make_stat_text(stats.children[0].children[0])))], align_center=True)
-                    )
-                ])
+                panels = []
+                # from ptpython.repl import embed
+                # embed(globals(), locals(), vi_mode=False, history_filename=None)
+                from profiling.stats import spread_stats, make_frozen_stats_tree
+                for _stats in make_frozen_stats_tree(stats):
+                    name, filename, lineno, module, own_hits, deep_time = _stats[1]
+                    if name == 'run':
+                        continue
+                    else:
+                        panels.append(Window(
+                            height=D.exact(1),
+                            content=TokenListControl(
+                                lambda x: [(Token.Title, ' | '.join(six.text_type(s) for s in _stats[1]))], align_center=True)
+                        ))
+                return HSplit(panels)
         layout = create_layout_from_stats()
         self._fc.content = layout
 
