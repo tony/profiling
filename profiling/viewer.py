@@ -571,20 +571,33 @@ class StatContainer(object):
         self.stats = stats
 
     def create_window(self):
-        panels = []
+        name_panels = []
+        fileno_panels = []
+        lineno_panels = []
+        module_panels = []
         for _stats in self.stats:
             name = _stats[1][0]
-            if name is not None and 'run' in name:
+            filename = _stats[1][1]
+            lineno = six.text_type(_stats[1][2])
+            module = _stats[1][3]
+            if name is not None and 'run' in name or name is None:
                 continue
             else:
                 assert name != 'run'
                 stat_line = ' | '.join(six.text_type(s) for s in _stats[1]) + '\n'
-                panels.append((Token.Title, stat_line))
-        return Window(
-            content=TokenListControl(
-                lambda x: panels, align_center=True)
-
-        )
+                name_panels.append((Token.Title, name + '\n'))
+                fileno_panels.append((Token.Title, filename + '\n'))
+                lineno_panels.append((Token.Title, ':%s\n' % lineno))
+                module_panels.append((Token.Title, module + '\n'))
+        return HSplit([
+            VSplit([
+                Window(content=TokenListControl(lambda x: name_panels)),
+                Window(content=TokenListControl(lambda x: fileno_panels)),
+                Window(content=TokenListControl(lambda x: lineno_panels)),
+                Window(content=TokenListControl(lambda x: module_panels)),
+            ])
+            # stats.module or stats.filename, stats.lineno
+        ])
 
 class StatisticsViewer(object):
 
