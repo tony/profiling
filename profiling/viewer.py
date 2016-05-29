@@ -703,18 +703,20 @@ class StatisticsViewer(object):
                     height=D.exact(1),
                     content=FillControl('-', token=Token.Line))])
             else:
-                stats, cpu_time, wall_time, title, time = result
+                stats = result[0]
                 panels = []
 
                 for _stats in make_frozen_stats_tree(stats):
-                    name, filename, lineno, module, own_hits, deep_time = _stats[1]
-                    if name == 'run':
+                    name = _stats[1][0]
+                    if name is not None and 'run' in name:
                         continue
                     else:
+                        assert name != 'run'
+                        stat_line = ' | '.join(six.text_type(s) for s in _stats[1])
                         panels.append(Window(
                             height=D.exact(1),
                             content=TokenListControl(
-                                lambda x: [(Token.Title, ' | '.join(six.text_type(s) for s in _stats[1]))], align_center=True)
+                                lambda x: [(Token.Title, stat_line)], align_center=True)
                         ))
                 return HSplit(panels)
         layout = create_layout_from_stats()
